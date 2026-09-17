@@ -142,6 +142,33 @@ bundle exec rake umass:server
 * View the application at [http://localhost:3000](http://localhost:3000)
 * View the Solr admin panel at [http://localhost:8983](http://localhost:8983)
 
+### Run with Docker Compose
+
+The repository includes a production-style Docker Compose stack with Caddy, Puma,
+MySQL, and Solr. Copy the existing production environment template, set the
+secrets, and provide the institutional certificate and key under `certs/`:
+
+```bash
+cp .example.env.production .env.production
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+The app waits for MySQL and Solr, runs `db:prepare`, and then starts Puma. Compose
+uses `.env.production` for MySQL, the app, and Caddy; its container environment
+overrides the local `127.0.0.1` database and Solr addresses with service names.
+Caddy proxies HTTPS traffic to the private app container. Set `DOMAIN` in
+`.env.production` to the public hostname. For Let's Encrypt, remove the `tls` directive from `Caddyfile`
+and the certificate mount from `docker-compose.yml`.
+
+To load the sample UMass records or clear the index:
+
+```bash
+docker compose exec app bundle exec rake umass:index:umass
+docker compose exec app bundle exec rake umass:index:delete_all
+```
+
 ### Run the Test Suite
 
 Stop any instances of GeoBlacklight before running this command.

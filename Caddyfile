@@ -1,0 +1,11 @@
+{$DOMAIN:geodata.example.umass.edu} {
+    encode zstd gzip
+
+    # For Let's Encrypt, remove this tls line and the certs mount in compose.
+    tls /etc/caddy/certs/geodata.crt /etc/caddy/certs/geodata.key
+
+    reverse_proxy app:3000 {
+        header_up X-Forwarded-Proto https
+        header_up X-Real-IP {remote_host}
+    }
+}
