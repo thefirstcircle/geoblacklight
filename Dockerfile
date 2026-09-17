@@ -13,6 +13,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
       default-libmysqlclient-dev libzstd-dev \
  && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
+ && npm install --global yarn@1.22.22 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,7 +25,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN SECRET_KEY_BASE_DUMMY=1 bundle exec rails assets:precompile
+RUN SECRET_KEY_BASE_DUMMY=1 NODE_OPTIONS=--openssl-legacy-provider bundle exec rails assets:precompile
 
 FROM ruby:3.3.9-slim AS app
 
@@ -43,7 +44,8 @@ WORKDIR /app
 COPY --from=build /usr/local/bundle /usr/local/bundle
 COPY --from=build /app /app
 
-RUN chmod +x /app/docker/entrypoint.sh \
+RUN mkdir -p /app/tmp/pids \
+ && chmod +x /app/docker/entrypoint.sh \
  && useradd --create-home --shell /bin/bash app \
  && chown -R app:app /app
 USER app

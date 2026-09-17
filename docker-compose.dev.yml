@@ -1,0 +1,86 @@
+name: geoblacklight-dev
+
+services:
+  mysql:
+    image: mysql:9.7.1
+    environment:
+      MYSQL_DATABASE: umass_geoblacklight_development
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: geoblacklight
+      MYSQL_PASSWORD: geoblacklight
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db-init:
+    image: mysql:9.7.1
+    volumes:
+      - ./docker/dev-mysql-init.sql:/dev-mysql-init.sql:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["sh", "-lc", "mysql -hmysql -uroot -proot < /dev-mysql-init.sql"]
+
+  solr:
+    image: solr:9.2.1
+    command: ["solr-precreate", "blacklight-core", "/opt/solr-conf"]
+    volumes:
+      - solr_dev_data:/var/solr
+      - ./solr/conf:/opt/solr-conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/admin/info/system || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      RAILS_ENV: development
+      MYSQL_SERVER: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: umass_geoblacklight_development
+      MYSQL_USER: geoblacklight
+      MYSQL_PASSWORD: geoblacklight
+      SOLR_URL: http://solr:8983/solr/blacklight-core
+      PORT: 3000
+      PIDFILE: /tmp/server.pid
+    volumes:
+      - .:/app
+      - dev_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      solr:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    command: ["sh", "-lc", "gem install bundler -v 2.7.1 --no-document && bundle _2.7.1_ exec rails db:prepare && exec bundle _2.7.1_ exec rails server -b 0.0.0.0 -p 3000"]
+
+  vite:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      RAILS_ENV: development
+      VITE_RUBY_HOST: ${VITE_RUBY_HOST:-0.0.0.0}
+      VITE_RUBY_PORT: 3036
+    volumes:
+      - .:/app
+      - dev_node_modules:/app/node_modules
+    ports:
+      - "3036:3036"
+    command: ["sh", "-lc", "gem install bundler -v 2.7.1 --no-document && exec bundle _2.7.1_ exec bin/vite dev"]
+
+volumes:
+  mysql_dev_data:
+  solr_dev_data:
+  dev_node_modules:

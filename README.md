@@ -142,31 +142,101 @@ bundle exec rake umass:server
 * View the application at [http://localhost:3000](http://localhost:3000)
 * View the Solr admin panel at [http://localhost:8983](http://localhost:8983)
 
-### Run with Docker Compose
+### Docker Quickstart
 
 The repository includes a production-style Docker Compose stack with Caddy, Puma,
-MySQL, and Solr. Copy the existing production environment template, set the
-secrets, and provide the institutional certificate and key under `certs/`:
+MySQL, and Solr. Install Docker Engine with the Compose plugin, then make sure
+your user can access the Docker daemon:
+
+```bash
+sudo usermod -aG docker "$USER"
+newgrp docker
+```
+
+Copy the production environment template and replace the placeholder secrets in
+`.env.production`:
 
 ```bash
 cp .example.env.production .env.production
+```
+
+For a local-only run, set `DOMAIN=localhost` in `.env.production`. To access the
+application from another machine, set `DOMAIN` to the server hostname instead,
+such as `DOMAIN=afs-979949-vm5`. The hostname must resolve to this server from
+the client machine, using DNS or an `/etc/hosts` entry, and TCP port 443 must be
+allowed through the firewall.
+
+Create a self-signed certificate whose name matches `DOMAIN` (replace the
+hostname below if needed):
+
+```bash
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 365 \
+   -keyout certs/geodata.key \
+   -out certs/geodata.crt \
+   -subj "/CN=afs-979949-vm5" \
+   -addext "subjectAltName=DNS:afs-979949-vm5"
+```
+
+Build and start the stack:
+
+```bash
 docker compose build
 docker compose up -d
 docker compose ps
 ```
 
+Open `https://localhost` for a local run, or `https://afs-979949-vm5/` when using
+the server hostname. A browser warning is expected for a self-signed certificate;
+use a certificate from a trusted CA for production.
+
 The app waits for MySQL and Solr, runs `db:prepare`, and then starts Puma. Compose
 uses `.env.production` for MySQL, the app, and Caddy; its container environment
 overrides the local `127.0.0.1` database and Solr addresses with service names.
-Caddy proxies HTTPS traffic to the private app container. Set `DOMAIN` in
-`.env.production` to the public hostname. For Let's Encrypt, remove the `tls` directive from `Caddyfile`
-and the certificate mount from `docker-compose.yml`.
+Caddy proxies HTTPS traffic to the private app container. For production, set
+`DOMAIN` in `.env.production` to the public hostname and provide the institutional
+certificate and key under `certs/`. For Let's Encrypt, remove the `tls` directive
+from `Caddyfile` and the certificate mount from `docker-compose.yml`.
 
 To load the sample UMass records or clear the index:
 
 ```bash
 docker compose exec app bundle exec rake umass:index:umass
 docker compose exec app bundle exec rake umass:index:delete_all
+```
+
+### Docker Development and Testing
+
+Development and test use a separate image with the development and test gems,
+bind-mounted source code, and Vite running in watch mode. They do not use Caddy
+or the production TLS setup.
+
+Start the development stack:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000). For development from
+another machine, set `VITE_RUBY_HOST` to the server hostname before starting the
+stack and allow ports 3000 and 3036 through the firewall:
+
+```bash
+VITE_RUBY_HOST=afs-979949-vm5 docker compose -f docker-compose.dev.yml up --build
+```
+
+Run the test suite using the same Docker image and isolated test database:
+
+```bash
+docker compose -f docker-compose.dev.yml run --rm \
+   -e RAILS_ENV=test app \
+   sh -lc 'gem install bundler -v 2.7.1 --no-document && bundle _2.7.1_ exec rails db:prepare && bundle _2.7.1_ exec rake ci'
+```
+
+Stop the development services when finished:
+
+```bash
+docker compose -f docker-compose.dev.yml down
 ```
 
 ### Run the Test Suite
